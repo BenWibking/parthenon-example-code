@@ -29,7 +29,7 @@ gamma = 1.4
 cfl = 0.45
 rho0 = 1.0
 p0 = 1.0
-drho = 0.0
+drho = 0.1
 dp = 0.0
 blob_radius = 0.25
 blob_x0 = 0.0
@@ -38,4 +38,4 @@ blob_y0 = 0.0
 <parthenon/output0>
 file_type = hdf5
 dt = 0.05
-variables = "U/.*"
+variables = U
