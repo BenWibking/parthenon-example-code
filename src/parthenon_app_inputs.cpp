@@ -10,6 +10,7 @@
 #include "interface/variable.hpp"
 #include "euler_driver.hpp"
 #include "euler_package.hpp"
+#include "pack/make_pack_descriptor.hpp"
 
 using namespace parthenon::package::prelude;
 using namespace parthenon;
@@ -39,26 +40,32 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   pmb->AllocSparseID("U", 1);
   pmb->AllocSparseID("U", 2);
 
-  auto v = data->PackVariables(std::vector<std::string>{"U"});
+  // Initialize using typed SparsePack access for clarity and safety
+  using euler_sparse_example::U::rho;
+  using euler_sparse_example::U::mom;
+  using euler_sparse_example::U::E;
+  auto desc = parthenon::MakePackDescriptor<rho, mom, E>(data.get());
+  auto pack = desc.GetPack(data.get());
 
   pmb->par_for(
-      PARTHENON_AUTO_LABEL, 0, v.GetDim(4) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int n, const int k, const int j, const int i) {
+      PARTHENON_AUTO_LABEL, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int k, const int j, const int i) {
         const Real x = coords.Xc<1>(i) - x0;
         const Real y = coords.Xc<2>(j) - y0;
         const Real z = coords.Xc<3>(k);
         const Real r2 = x * x + y * y + z * z;
         const bool in_blob = (r2 < r0 * r0);
-        const Real rho = rho0 + (in_blob ? drho : 0.0);
-        const Real p = p0 + (in_blob ? dp : 0.0);
-        if (v(n).label() == "U::rho") {
-          v(n, k, j, i) = rho;
-        } else if (v(n).label() == "U::mom_x" || v(n).label() == "U::mom_y" ||
-                   v(n).label() == "U::mom_z") {
-          v(n, k, j, i) = 0.0;
-        } else if (v(n).label() == "U::E") {
-          const Real eint = p / (gamma - 1.0);
-          v(n, k, j, i) = eint;
+        const Real rho_ic = rho0 + (in_blob ? drho : 0.0);
+        const Real p_ic = p0 + (in_blob ? dp : 0.0);
+        const Real eint = p_ic / (gamma - 1.0);
+
+        // block index 0 for MeshBlockData packs
+        pack(0, rho(), k, j, i) = rho_ic;
+        pack(0, E(),   k, j, i) = eint;
+        if (pack.Contains(0, mom())) {
+          pack(0, mom(0), k, j, i) = 0.0;
+          pack(0, mom(1), k, j, i) = 0.0;
+          pack(0, mom(2), k, j, i) = 0.0;
         }
       });
 }

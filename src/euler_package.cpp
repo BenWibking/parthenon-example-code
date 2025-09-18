@@ -67,25 +67,15 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
   IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
-  // Request a pack that includes flux arrays for variables marked WithFluxes.
-  // Note: The flags argument filters variables; to access flux() we must set PDOpt::WithFluxes.
-  auto desc = parthenon::MakePackDescriptor(
-      rc.get(), std::vector<std::string>{"U"}, std::vector<parthenon::MetadataFlag>{},
+  // Build a typed pack that includes flux arrays for the requested variables.
+  // Using typed tags avoids manual index arithmetic and std::unordered_map lookups.
+  using euler_sparse_example::U::rho;
+  using euler_sparse_example::U::mom;
+  using euler_sparse_example::U::E;
+  auto desc = parthenon::MakePackDescriptor<rho, mom, E>(
+      rc.get(), std::vector<parthenon::MetadataFlag>{},
       std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
-  auto U = desc.GetPack(rc.get());
-  auto map = desc.GetMap();
-  // The descriptor map for SparsePack contains only group names (e.g., "U").
-  // Components follow the order we added to the SparsePool in Initialize():
-  //   U(0): rho [1 comp]
-  //   U(1): mom [Vector, 3 comps: x,y,z]
-  //   U(2): E   [1 comp]
-  // Hence offsets within group "U" are: rho=0, mom_x=1, mom_y=2, mom_z=3, E=4.
-  const parthenon::PackIdx iU(map.at("U"));
-  const parthenon::PackIdx i_rho = iU + 0;
-  const parthenon::PackIdx i_mx = iU + 1;
-  const parthenon::PackIdx i_my = iU + 2;
-  const parthenon::PackIdx i_mz = iU + 3;
-  const parthenon::PackIdx i_E = iU + 4;
+  auto pack = desc.GetPack(rc.get());
 
   // X1 fluxes
   const int scratch_level = 0;
@@ -94,24 +84,24 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
       PARTHENON_AUTO_LABEL, scratch_size, scratch_level, kb.s, kb.e, jb.s, jb.e,
       KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int k, const int j) {
         for (int i = ib.s; i <= ib.e + 1; ++i) {
-          if (!(U.Contains(0, i_rho) && U.Contains(0, i_mx) && U.Contains(0, i_my) &&
-                U.Contains(0, i_E)))
+          if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) &&
+                pack.Contains(0, E())))
             continue;
 
           const int iL = i - 1;
           const int iR = i;
 
-          const Real rhoL = U(0, i_rho, k, j, iL);
-          const Real mxL = U(0, i_mx, k, j, iL);
-          const Real myL = U(0, i_my, k, j, iL);
-          const Real mzL = U.Contains(0, i_mz) ? U(0, i_mz, k, j, iL) : 0.0;
-          const Real EL = U(0, i_E, k, j, iL);
+          const Real rhoL = pack(0, rho(), k, j, iL);
+          const Real mxL  = pack(0, mom(0), k, j, iL);
+          const Real myL  = pack(0, mom(1), k, j, iL);
+          const Real mzL  = pack(0, mom(2), k, j, iL);
+          const Real EL   = pack(0, E(), k, j, iL);
 
-          const Real rhoR = U(0, i_rho, k, j, iR);
-          const Real mxR = U(0, i_mx, k, j, iR);
-          const Real myR = U(0, i_my, k, j, iR);
-          const Real mzR = U.Contains(0, i_mz) ? U(0, i_mz, k, j, iR) : 0.0;
-          const Real ER = U(0, i_E, k, j, iR);
+          const Real rhoR = pack(0, rho(), k, j, iR);
+          const Real mxR  = pack(0, mom(0), k, j, iR);
+          const Real myR  = pack(0, mom(1), k, j, iR);
+          const Real mzR  = pack(0, mom(2), k, j, iR);
+          const Real ER   = pack(0, E(), k, j, iR);
 
           Real uL, vL, wL, pL, aL; // normal is x
           Real uR, vR, wR, pR, aR;
@@ -129,16 +119,16 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
           const Real Fr_my_R = myR * uR;
           const Real Fr_E_R = (ER + pR) * uR;
 
-          U.flux(0, 1, i_rho, k, j, i) = 0.5 * (Fr_rho_L + Fr_rho_R) - 0.5 * smax * (rhoR - rhoL);
-          U.flux(0, 1, i_mx, k, j, i) = 0.5 * (Fr_mx_L + Fr_mx_R) - 0.5 * smax * (mxR - mxL);
-          U.flux(0, 1, i_my, k, j, i) = 0.5 * (Fr_my_L + Fr_my_R) - 0.5 * smax * (myR - myL);
-          if (U.Contains(0, i_mz)) {
+          pack.flux(0, 1, rho(), k, j, i) = 0.5 * (Fr_rho_L + Fr_rho_R) - 0.5 * smax * (rhoR - rhoL);
+          pack.flux(0, 1, mom(0), k, j, i) = 0.5 * (Fr_mx_L + Fr_mx_R) - 0.5 * smax * (mxR - mxL);
+          pack.flux(0, 1, mom(1), k, j, i) = 0.5 * (Fr_my_L + Fr_my_R) - 0.5 * smax * (myR - myL);
+          {
             const Real Fr_mz_L = mzL * uL;
             const Real Fr_mz_R = mzR * uR;
-            U.flux(0, 1, i_mz, k, j, i) =
+            pack.flux(0, 1, mom(2), k, j, i) =
                 0.5 * (Fr_mz_L + Fr_mz_R) - 0.5 * smax * (mzR - mzL);
           }
-          U.flux(0, 1, i_E, k, j, i) = 0.5 * (Fr_E_L + Fr_E_R) - 0.5 * smax * (ER - EL);
+          pack.flux(0, 1, E(), k, j, i) = 0.5 * (Fr_E_L + Fr_E_R) - 0.5 * smax * (ER - EL);
         }
       });
 
@@ -148,24 +138,24 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
         PARTHENON_AUTO_LABEL, scratch_size, scratch_level, kb.s, kb.e, jb.s, jb.e + 1,
         KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int k, const int j) {
           for (int i = ib.s; i <= ib.e; ++i) {
-            if (!(U.Contains(0, i_rho) && U.Contains(0, i_mx) && U.Contains(0, i_my) &&
-                  U.Contains(0, i_E)))
+            if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) &&
+                  pack.Contains(0, E())))
               continue;
 
             const int jL = j - 1;
             const int jR = j;
 
-            const Real rhoL = U(0, i_rho, k, jL, i);
-            const Real mxL = U(0, i_mx, k, jL, i);
-            const Real myL = U(0, i_my, k, jL, i);
-            const Real mzL = U.Contains(0, i_mz) ? U(0, i_mz, k, jL, i) : 0.0;
-            const Real EL = U(0, i_E, k, jL, i);
+            const Real rhoL = pack(0, rho(), k, jL, i);
+            const Real mxL  = pack(0, mom(0), k, jL, i);
+            const Real myL  = pack(0, mom(1), k, jL, i);
+            const Real mzL  = pack(0, mom(2), k, jL, i);
+            const Real EL   = pack(0, E(), k, jL, i);
 
-            const Real rhoR = U(0, i_rho, k, jR, i);
-            const Real mxR = U(0, i_mx, k, jR, i);
-            const Real myR = U(0, i_my, k, jR, i);
-            const Real mzR = U.Contains(0, i_mz) ? U(0, i_mz, k, jR, i) : 0.0;
-            const Real ER = U(0, i_E, k, jR, i);
+            const Real rhoR = pack(0, rho(), k, jR, i);
+            const Real mxR  = pack(0, mom(0), k, jR, i);
+            const Real myR  = pack(0, mom(1), k, jR, i);
+            const Real mzR  = pack(0, mom(2), k, jR, i);
+            const Real ER   = pack(0, E(), k, jR, i);
 
             Real uL, vL, wL, pL, aL; // normal is y
             Real uR, vR, wR, pR, aR;
@@ -183,16 +173,16 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
             const Real Fr_my_R = myR * vR + pR;
             const Real Fr_E_R = (ER + pR) * vR;
 
-            U.flux(0, 2, i_rho, k, j, i) = 0.5 * (Fr_rho_L + Fr_rho_R) - 0.5 * smax * (rhoR - rhoL);
-            U.flux(0, 2, i_mx, k, j, i) = 0.5 * (Fr_mx_L + Fr_mx_R) - 0.5 * smax * (mxR - mxL);
-            U.flux(0, 2, i_my, k, j, i) = 0.5 * (Fr_my_L + Fr_my_R) - 0.5 * smax * (myR - myL);
-            if (U.Contains(0, i_mz)) {
+            pack.flux(0, 2, rho(), k, j, i) = 0.5 * (Fr_rho_L + Fr_rho_R) - 0.5 * smax * (rhoR - rhoL);
+            pack.flux(0, 2, mom(0), k, j, i) = 0.5 * (Fr_mx_L + Fr_mx_R) - 0.5 * smax * (mxR - mxL);
+            pack.flux(0, 2, mom(1), k, j, i) = 0.5 * (Fr_my_L + Fr_my_R) - 0.5 * smax * (myR - myL);
+            {
               const Real Fr_mz_L = mzL * vL;
               const Real Fr_mz_R = mzR * vR;
-              U.flux(0, 2, i_mz, k, j, i) =
+              pack.flux(0, 2, mom(2), k, j, i) =
                   0.5 * (Fr_mz_L + Fr_mz_R) - 0.5 * smax * (mzR - mzL);
             }
-            U.flux(0, 2, i_E, k, j, i) = 0.5 * (Fr_E_L + Fr_E_R) - 0.5 * smax * (ER - EL);
+            pack.flux(0, 2, E(), k, j, i) = 0.5 * (Fr_E_L + Fr_E_R) - 0.5 * smax * (ER - EL);
           }
         });
   }
@@ -209,15 +199,11 @@ Real EstimateTimestepBlock(MeshBlockData<Real> *rc) {
   IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
-  auto desc = parthenon::MakePackDescriptor(rc, std::vector<std::string>{"U"});
-  auto U = desc.GetPack(rc);
-  auto map = desc.GetMap();
-  const parthenon::PackIdx iU(map.at("U"));
-  const parthenon::PackIdx i_rho = iU + 0;
-  const parthenon::PackIdx i_mx = iU + 1;
-  const parthenon::PackIdx i_my = iU + 2;
-  const parthenon::PackIdx i_mz = iU + 3;
-  const parthenon::PackIdx i_E = iU + 4;
+  using euler_sparse_example::U::rho;
+  using euler_sparse_example::U::mom;
+  using euler_sparse_example::U::E;
+  auto desc = parthenon::MakePackDescriptor<rho, mom, E>(rc);
+  auto pack = desc.GetPack(rc);
 
   auto &coords = pmb->coords;
 
@@ -225,16 +211,15 @@ Real EstimateTimestepBlock(MeshBlockData<Real> *rc) {
   pmb->par_reduce(
       PARTHENON_AUTO_LABEL, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int k, const int j, const int i, Real &lmin_dt) {
-        if (!(U.Contains(0, i_rho) && U.Contains(0, i_mx) && U.Contains(0, i_my) &&
-              U.Contains(0, i_E)))
+        if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) && pack.Contains(0, E())))
           return;
-        const Real rho = U(0, i_rho, k, j, i);
-        const Real mx = U(0, i_mx, k, j, i);
-        const Real my = U(0, i_my, k, j, i);
-        const Real mz = U.Contains(0, i_mz) ? U(0, i_mz, k, j, i) : 0.0;
-        const Real E = U(0, i_E, k, j, i);
+        const Real rho_v = pack(0, rho(), k, j, i);
+        const Real mx   = pack(0, mom(0), k, j, i);
+        const Real my   = pack(0, mom(1), k, j, i);
+        const Real mz   = pack(0, mom(2), k, j, i);
+        const Real E_v  = pack(0, E(), k, j, i);
         Real u, v, w, p, a;
-        cons_to_prim_x(gamma, rho, mx, my, mz, E, &u, &v, &w, &p, &a);
+        cons_to_prim_x(gamma, rho_v, mx, my, mz, E_v, &u, &v, &w, &p, &a);
         Real inv_dt = 0.0;
         inv_dt = std::max(inv_dt, (std::abs(u) + a) / coords.Dxc<X1DIR>(k, j, i));
         if (pmb->pmy_mesh->ndim >= 2)
