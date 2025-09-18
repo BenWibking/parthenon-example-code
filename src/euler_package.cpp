@@ -67,16 +67,25 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
   IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
+  // Request a pack that includes flux arrays for variables marked WithFluxes.
+  // Note: The flags argument filters variables; to access flux() we must set PDOpt::WithFluxes.
   auto desc = parthenon::MakePackDescriptor(
-      rc.get(), std::vector<std::string>{"U/.*"},
-      std::vector<parthenon::MetadataFlag>{parthenon::Metadata::WithFluxes});
+      rc.get(), std::vector<std::string>{"U"}, std::vector<parthenon::MetadataFlag>{},
+      std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
   auto U = desc.GetPack(rc.get());
   auto map = desc.GetMap();
-  parthenon::PackIdx i_rho(map.at("U::rho"));
-  parthenon::PackIdx i_mx(map.at("U::mom_x"));
-  parthenon::PackIdx i_my(map.at("U::mom_y"));
-  parthenon::PackIdx i_mz(map.at("U::mom_z"));
-  parthenon::PackIdx i_E(map.at("U::E"));
+  // The descriptor map for SparsePack contains only group names (e.g., "U").
+  // Components follow the order we added to the SparsePool in Initialize():
+  //   U(0): rho [1 comp]
+  //   U(1): mom [Vector, 3 comps: x,y,z]
+  //   U(2): E   [1 comp]
+  // Hence offsets within group "U" are: rho=0, mom_x=1, mom_y=2, mom_z=3, E=4.
+  const parthenon::PackIdx iU(map.at("U"));
+  const parthenon::PackIdx i_rho = iU + 0;
+  const parthenon::PackIdx i_mx = iU + 1;
+  const parthenon::PackIdx i_my = iU + 2;
+  const parthenon::PackIdx i_mz = iU + 3;
+  const parthenon::PackIdx i_E = iU + 4;
 
   // X1 fluxes
   const int scratch_level = 0;
@@ -200,15 +209,15 @@ Real EstimateTimestepBlock(MeshBlockData<Real> *rc) {
   IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
-  auto desc = parthenon::MakePackDescriptor(
-      rc, std::vector<std::string>{"U/.*"});
+  auto desc = parthenon::MakePackDescriptor(rc, std::vector<std::string>{"U"});
   auto U = desc.GetPack(rc);
   auto map = desc.GetMap();
-  parthenon::PackIdx i_rho(map.at("U::rho"));
-  parthenon::PackIdx i_mx(map.at("U::mom_x"));
-  parthenon::PackIdx i_my(map.at("U::mom_y"));
-  parthenon::PackIdx i_mz(map.at("U::mom_z"));
-  parthenon::PackIdx i_E(map.at("U::E"));
+  const parthenon::PackIdx iU(map.at("U"));
+  const parthenon::PackIdx i_rho = iU + 0;
+  const parthenon::PackIdx i_mx = iU + 1;
+  const parthenon::PackIdx i_my = iU + 2;
+  const parthenon::PackIdx i_mz = iU + 3;
+  const parthenon::PackIdx i_E = iU + 4;
 
   auto &coords = pmb->coords;
 

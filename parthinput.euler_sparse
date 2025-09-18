@@ -1,4 +1,10 @@
-[parthenon/mesh]
+<parthenon/mesh>
+x1min = -0.5
+x1max = 0.5
+x2min = -0.5
+x2max = 0.5
+x3min = -0.5
+x3max = 0.5
 nx1 = 64
 nx2 = 64
 nx3 = 1
@@ -9,16 +15,16 @@ ox2_bc = periodic
 ix3_bc = periodic
 ox3_bc = periodic
 numlevel = 1
-refinement = false
+refinement = none
 multilevel = false
 do_coalesced_comms = true
 
-[parthenon/time]
+<parthenon/time>
 integrator = rk2
 tlim = 0.1
 dt = 1e-3
 
-[euler]
+<euler>
 gamma = 1.4
 cfl = 0.45
 rho0 = 1.0
@@ -29,8 +35,7 @@ blob_radius = 0.25
 blob_x0 = 0.0
 blob_y0 = 0.0
 
-[parthenon/output0]
+<parthenon/output0>
 file_type = hdf5
 dt = 0.05
 variables = "U/.*"
-

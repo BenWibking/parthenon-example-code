@@ -3,6 +3,7 @@
 #define EXAMPLE_EULER_SPARSE_EULER_DRIVER_HPP_
 
 #include <parthenon/driver.hpp>
+#include <memory>
 
 namespace euler_sparse_example {
 using namespace parthenon::driver::prelude;
@@ -17,7 +18,9 @@ class EulerDriver : public MultiStageDriver {
 
 void ProblemGenerator(parthenon::MeshBlock *pmb, parthenon::ParameterInput *pin);
 
+parthenon::Packages_t ProcessPackages(
+    std::unique_ptr<parthenon::ParameterInput> &pin);
+
 } // namespace euler_sparse_example
 
 #endif // EXAMPLE_EULER_SPARSE_EULER_DRIVER_HPP_
-
