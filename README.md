@@ -5,15 +5,13 @@ This guide explains how this repository implements a minimal Parthenon-based hyp
 ## Build and Run
 
 - Init submodules: `git submodule update --init --recursive`
-- Configure + build (top-level drives Parthenon + this example):
+
+- Standalone configure + build (top-level drives Parthenon + this example):
   - `cmake -S . -B build [-DPARTHENON_ENABLE_MPI=ON -DPARTHENON_ENABLE_OPENMP=ON ...]`
   - `cmake --build build -j`
+- Pass Parthenon options at configure time (MPI/OpenMP/HDF5/Kokkos backend) as needed.
 - Run from the build tree:
   - `build/src/euler_sparse-example -i parthinput.euler_sparse`
-
-Notes:
-- Pass Parthenon options at configure time (MPI/OpenMP/HDF5/Kokkos backend) as needed.
-- Alternatively, include `src/` and `extern/parthenon` in a superproject and link `Parthenon::parthenon` to build `euler_sparse-example`.
 
 ## Overview of Components
 
@@ -129,7 +127,7 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 
 ## Input File
 
-`parthinput.euler_sparse` configures the mesh, time integrator, and Euler app parameters. Relevant keys under `[euler]` include `gamma`, `cfl`, `rho0`, `p0`, `drho`, `dp`, and blob geometry for the initial condition. Output selects all `U` components via `variables = "U/.*"`.
+`parthinput.euler_sparse` configures the mesh, time integrator, and Euler app parameters. Relevant keys under `[euler]` include `gamma`, `cfl`, `rho0`, `p0`, `drho`, `dp`, and blob geometry for the initial condition. Output selects the sparse pool via `variables = U`.
 
 ## Physics/ICs
 
