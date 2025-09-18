@@ -5,8 +5,8 @@ x2min = -0.5
 x2max = 0.5
 x3min = -0.5
 x3max = 0.5
-nx1 = 64
-nx2 = 64
+nx1 = 128
+nx2 = 128
 nx3 = 1
 ix1_bc = periodic
 ox1_bc = periodic
@@ -30,12 +30,12 @@ cfl = 0.45
 rho0 = 1.0
 p0 = 1.0
 drho = 0.1
-dp = 0.0
+dp = 0.1
 blob_radius = 0.25
 blob_x0 = 0.0
 blob_y0 = 0.0
 
 <parthenon/output0>
 file_type = hdf5
-dt = 0.05
+dt = 0.01
 variables = U
