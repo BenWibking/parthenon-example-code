@@ -88,31 +88,94 @@ pmb->par_for(PARTHENON_AUTO_LABEL, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
 
 ## Flux Computation with Typed SparsePack
 
-Fluxes are computed with a typed `MakePackDescriptor<rho, mom, E>(..., PDOpt::WithFluxes)` to ensure flux arrays are present. A simple Rusanov solver is implemented in X1 and, when 2D+, in X2:
+Fluxes are computed over all MeshBlocks at once using a typed `MakePackDescriptor<rho, mom, E>(..., PDOpt::WithFluxes)`, then iterating with a block-aware outer loop and an inner i-loop. A Rusanov (HLL) solver is used in X1 and, when 2D+, in X2.
 
 ```c++
 // src/euler_package.cpp:ComputeFluxes (excerpt)
 auto desc = parthenon::MakePackDescriptor<rho, mom, E>(
-    rc.get(), std::vector<parthenon::MetadataFlag>{},
+    md, std::vector<parthenon::MetadataFlag>{},
     std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
-auto pack = desc.GetPack(rc.get());
+auto pack = desc.GetPack(md);
 
-pmb->par_for_outer(PARTHENON_AUTO_LABEL, scratch_size, scratch_level, kb.s, kb.e, jb.s, jb.e,
-  KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int k, const int j) {
-    for (int i = ib.s; i <= ib.e + 1; ++i) {
-      if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) && pack.Contains(0, E())))
-        continue;
-      // reconstruct L/R (here we use cell-centered values directly), compute smax
-      // write fluxes via pack.flux(0, dir, tag[,comp], k, j, i)
-    }
-  });
+const int nblocks = md->NumBlocks();
+
+// X1 fluxes: outer loops over block b, k, j; inner over faces i in [ib.s, ib.e+1]
+parthenon::par_for_outer(
+    DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, DevExecSpace(), scratch_size,
+    scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e,
+    KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+      if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+        return;
+
+      // Take raw pointers to contiguous i-slices for speed
+      Real *rho_bkj = &pack(b, rho(),   k, j, 0);
+      Real *mx_bkj  = &pack(b, mom(0), k, j, 0);
+      Real *my_bkj  = &pack(b, mom(1), k, j, 0);
+      Real *mz_bkj  = &pack(b, mom(2), k, j, 0);
+      Real *E_bkj   = &pack(b, E(),     k, j, 0);
+
+      Real *Fx_rho = &pack.flux(b, 1, rho(),   k, j, 0);
+      Real *Fx_mx  = &pack.flux(b, 1, mom(0),  k, j, 0);
+      Real *Fx_my  = &pack.flux(b, 1, mom(1),  k, j, 0);
+      Real *Fx_mz  = &pack.flux(b, 1, mom(2),  k, j, 0);
+      Real *Fx_E   = &pack.flux(b, 1, E(),     k, j, 0);
+
+      parthenon::par_for_inner(member, ib.s, ib.e + 1, [&](const int i) {
+        const int iL = i - 1, iR = i;
+        // compute HLL flux using left/right states from rho_bkj[iL/R], ...
+        // write to Fx_*[i]
+      });
+    });
+
+// X2 fluxes (if ndim >= 2): outer j over faces [jb.s, jb.e+1], inner i over [ib.s, ib.e]
+if (pm->ndim >= 2) {
+  parthenon::par_for_outer(
+      DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, DevExecSpace(), scratch_size,
+      scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e + 1,
+      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+        if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+          return;
+
+        const int jL = j - 1, jR = j;
+        // take jL/jR i-slices, compute HLL flux, and write to pack.flux(b, 2, ...)
+        parthenon::par_for_inner(member, ib.s, ib.e, [&](const int i) {
+          // compute and store Fy_*[i]
+        });
+      });
+}
 ```
 
-Helper conversions (conserved → primitive and sound speed) live alongside the flux routine.
+Key changes in the new loop structure:
+- MeshData-based pack and block-aware Contains checks (`pack.Contains(b, ...)`).
+- `par_for_outer` over `(b, k, j)` for X1 and `(b, k, j_face)` for X2.
+- Use pointer slices to contiguous i-lines and `par_for_inner` for face loops.
+
+Helper conversions (conserved → primitive and sound speed) remain alongside the flux routine.
 
 ## Multi-Stage Driver and Task Graph
 
 `src/euler_driver.cpp:MakeTaskCollection` follows this ordering per stage:
+
+- Note: `ComputeFluxes` operates on a `MeshData` partition covering multiple blocks. The driver builds per-stage `MeshData` views and passes them into `ComputeFluxes`, which then iterates over blocks internally using the block-aware `par_for_outer` loops described above. This improves overlap with communication and keeps flux evaluation contiguous in memory along i-lines.
+
+Call site in the driver:
+
+```c++
+// src/euler_driver.cpp: Flux computation task (MeshData partition)
+auto &region_flux = tc.AddRegion(num_partitions);
+for (int i = 0; i < num_partitions; i++) {
+  auto &tl = region_flux[i];
+  auto &mbase = pmesh->mesh_data.Add("base", partitions[i]);
+  auto &mc0 = pmesh->mesh_data.Add(stage_name[stage - 1], mbase);
+  tl.AddTask(
+      none,
+      TF(static_cast<parthenon::TaskStatus (*)(parthenon::MeshData<Real> *)>(
+          euler_sparse_example::ComputeFluxes)),
+      mc0.get());
+}
+```
+
+Exact location: `src/euler_driver.cpp:34`.
 
 1) Start receives early on `MeshData` partitions
    - `StartReceiveFluxCorrections`, `StartReceiveBoundBufs<any>`
