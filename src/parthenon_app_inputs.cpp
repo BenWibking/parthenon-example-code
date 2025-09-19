@@ -1,13 +1,8 @@
 //========================================================================================
-#include <cmath>
 #include <memory>
-#include <vector>
 
 #include <parthenon/package.hpp>
 
-#include "defs.hpp"
-#include "globals.hpp"
-#include "interface/variable.hpp"
 #include "euler_driver.hpp"
 #include "euler_package.hpp"
 #include "pack/make_pack_descriptor.hpp"

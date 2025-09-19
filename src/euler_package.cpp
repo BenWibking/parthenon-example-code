@@ -13,7 +13,6 @@
 #include "interface/sparse_pool.hpp"
 #include "mesh/meshblock.hpp"
 #include "pack/make_pack_descriptor.hpp"
-#include "pack/pack_utils.hpp"
 
 #include "euler_package.hpp"
 
@@ -21,7 +20,7 @@ using namespace parthenon::package::prelude;
 
 namespace euler_sparse_example {
 
-static inline KOKKOS_INLINE_FUNCTION Real max3(Real a, Real b, Real c) {
+static inline Real max3(Real a, Real b, Real c) {
   return std::max(a, std::max(b, c));
 }
 
@@ -147,88 +146,120 @@ KOKKOS_INLINE_FUNCTION void hll_flux_dir(
   }
 }
 
-parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
-  auto pmb = rc->GetBlockPointer();
-  auto pkg = pmb->packages.Get("euler_sparse");
+// MeshData variant: compute fluxes for all blocks (explicit b index)
+parthenon::TaskStatus ComputeFluxes(MeshData<Real> *md) {
+  auto pm = md->GetMeshPointer();
+  auto pkg = pm->packages.Get("euler_sparse");
   const Real gamma = pkg->Param<Real>("gamma");
 
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
-  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+  IndexRange ib = md->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBoundsK(IndexDomain::interior);
 
-  // Build a typed pack that includes flux arrays for the requested variables.
-  // Using typed tags avoids manual index arithmetic and std::unordered_map lookups.
   using euler_sparse_example::U::rho;
   using euler_sparse_example::U::mom;
   using euler_sparse_example::U::E;
   auto desc = parthenon::MakePackDescriptor<rho, mom, E>(
-      rc.get(), std::vector<parthenon::MetadataFlag>{},
+      md, std::vector<parthenon::MetadataFlag>{},
       std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
-  auto pack = desc.GetPack(rc.get());
+  auto pack = desc.GetPack(md);
 
-  // X1 fluxes
+  const int nblocks = md->NumBlocks();
   const int scratch_level = 0;
   const size_t scratch_size = 0;
-  pmb->par_for_outer(
-      PARTHENON_AUTO_LABEL, scratch_size, scratch_level, kb.s, kb.e, jb.s, jb.e,
-      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int k, const int j) {
-        for (int i = ib.s; i <= ib.e + 1; ++i) {
-          if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) &&
-                pack.Contains(0, E())))
-            continue;
 
+  // X1 fluxes across all blocks
+  parthenon::par_for_outer(
+      DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, DevExecSpace(), scratch_size,
+      scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e,
+      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+        if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+          return;
+
+        Real *rho_bkj = &pack(b, rho(),   k, j, 0);
+        Real *mx_bkj  = &pack(b, mom(0), k, j, 0);
+        Real *my_bkj  = &pack(b, mom(1), k, j, 0);
+        Real *mz_bkj  = &pack(b, mom(2), k, j, 0);
+        Real *E_bkj   = &pack(b, E(),     k, j, 0);
+
+        Real *Fx_rho = &pack.flux(b, 1, rho(),   k, j, 0);
+        Real *Fx_mx  = &pack.flux(b, 1, mom(0),  k, j, 0);
+        Real *Fx_my  = &pack.flux(b, 1, mom(1),  k, j, 0);
+        Real *Fx_mz  = &pack.flux(b, 1, mom(2),  k, j, 0);
+        Real *Fx_E   = &pack.flux(b, 1, E(),     k, j, 0);
+
+        parthenon::par_for_inner(member, ib.s, ib.e + 1, [&](const int i) {
           const int iL = i - 1;
           const int iR = i;
 
-          const Real rhoL = pack(0, rho(), k, j, iL);
-          const Real mxL  = pack(0, mom(0), k, j, iL);
-          const Real myL  = pack(0, mom(1), k, j, iL);
-          const Real mzL  = pack(0, mom(2), k, j, iL);
-          const Real EL   = pack(0, E(), k, j, iL);
+          const Real rhoL = rho_bkj[iL];
+          const Real mxL  = mx_bkj[iL];
+          const Real myL  = my_bkj[iL];
+          const Real mzL  = mz_bkj[iL];
+          const Real EL   = E_bkj[iL];
 
-          const Real rhoR = pack(0, rho(), k, j, iR);
-          const Real mxR  = pack(0, mom(0), k, j, iR);
-          const Real myR  = pack(0, mom(1), k, j, iR);
-          const Real mzR  = pack(0, mom(2), k, j, iR);
-          const Real ER   = pack(0, E(), k, j, iR);
+          const Real rhoR = rho_bkj[iR];
+          const Real mxR  = mx_bkj[iR];
+          const Real myR  = my_bkj[iR];
+          const Real mzR  = mz_bkj[iR];
+          const Real ER   = E_bkj[iR];
+
           Real F_rho, F_mx, F_my, F_mz, F_E;
           hll_flux_dir<X1DIR>(gamma,
                               rhoL, mxL, myL, mzL, EL,
                               rhoR, mxR, myR, mzR, ER,
                               &F_rho, &F_mx, &F_my, &F_mz, &F_E);
 
-          pack.flux(0, 1, rho(),   k, j, i) = F_rho;
-          pack.flux(0, 1, mom(0),  k, j, i) = F_mx;
-          pack.flux(0, 1, mom(1),  k, j, i) = F_my;
-          pack.flux(0, 1, mom(2),  k, j, i) = F_mz;
-          pack.flux(0, 1, E(),     k, j, i) = F_E;
-        }
+          Fx_rho[i] = F_rho;
+          Fx_mx[i]  = F_mx;
+          Fx_my[i]  = F_my;
+          Fx_mz[i]  = F_mz;
+          Fx_E[i]   = F_E;
+        });
       });
 
   // X2 fluxes (if 2D or 3D)
-  if (pmb->pmy_mesh->ndim >= 2) {
-    pmb->par_for_outer(
-        PARTHENON_AUTO_LABEL, scratch_size, scratch_level, kb.s, kb.e, jb.s, jb.e + 1,
-        KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int k, const int j) {
-          for (int i = ib.s; i <= ib.e; ++i) {
-            if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) &&
-                  pack.Contains(0, E())))
-              continue;
+  if (pm->ndim >= 2) {
+    parthenon::par_for_outer(
+        DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, DevExecSpace(), scratch_size,
+        scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e + 1,
+        KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+          if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+            return;
 
-            const int jL = j - 1;
-            const int jR = j;
+          const int jL = j - 1;
+          const int jR = j;
 
-            const Real rhoL = pack(0, rho(), k, jL, i);
-            const Real mxL  = pack(0, mom(0), k, jL, i);
-            const Real myL  = pack(0, mom(1), k, jL, i);
-            const Real mzL  = pack(0, mom(2), k, jL, i);
-            const Real EL   = pack(0, E(), k, jL, i);
+          Real *rho_jL = &pack(b, rho(),   k, jL, 0);
+          Real *mx_jL  = &pack(b, mom(0), k, jL, 0);
+          Real *my_jL  = &pack(b, mom(1), k, jL, 0);
+          Real *mz_jL  = &pack(b, mom(2), k, jL, 0);
+          Real *E_jL   = &pack(b, E(),     k, jL, 0);
 
-            const Real rhoR = pack(0, rho(), k, jR, i);
-            const Real mxR  = pack(0, mom(0), k, jR, i);
-            const Real myR  = pack(0, mom(1), k, jR, i);
-            const Real mzR  = pack(0, mom(2), k, jR, i);
-            const Real ER   = pack(0, E(), k, jR, i);
+          Real *rho_jR = &pack(b, rho(),   k, jR, 0);
+          Real *mx_jR  = &pack(b, mom(0), k, jR, 0);
+          Real *my_jR  = &pack(b, mom(1), k, jR, 0);
+          Real *mz_jR  = &pack(b, mom(2), k, jR, 0);
+          Real *E_jR   = &pack(b, E(),     k, jR, 0);
+
+          Real *Fy_rho = &pack.flux(b, 2, rho(),   k, j, 0);
+          Real *Fy_mx  = &pack.flux(b, 2, mom(0),  k, j, 0);
+          Real *Fy_my  = &pack.flux(b, 2, mom(1),  k, j, 0);
+          Real *Fy_mz  = &pack.flux(b, 2, mom(2),  k, j, 0);
+          Real *Fy_E   = &pack.flux(b, 2, E(),     k, j, 0);
+
+          parthenon::par_for_inner(member, ib.s, ib.e, [&](const int i) {
+            const Real rhoL = rho_jL[i];
+            const Real mxL  = mx_jL[i];
+            const Real myL  = my_jL[i];
+            const Real mzL  = mz_jL[i];
+            const Real EL   = E_jL[i];
+
+            const Real rhoR = rho_jR[i];
+            const Real mxR  = mx_jR[i];
+            const Real myR  = my_jR[i];
+            const Real mzR  = mz_jR[i];
+            const Real ER   = E_jR[i];
 
             Real F_rho, F_mx, F_my, F_mz, F_E;
             hll_flux_dir<X2DIR>(gamma,
@@ -236,12 +267,12 @@ parthenon::TaskStatus ComputeFluxes(std::shared_ptr<MeshBlockData<Real>> &rc) {
                                 rhoR, mxR, myR, mzR, ER,
                                 &F_rho, &F_mx, &F_my, &F_mz, &F_E);
 
-            pack.flux(0, 2, rho(),   k, j, i) = F_rho;
-            pack.flux(0, 2, mom(0),  k, j, i) = F_mx;
-            pack.flux(0, 2, mom(1),  k, j, i) = F_my;
-            pack.flux(0, 2, mom(2),  k, j, i) = F_mz;
-            pack.flux(0, 2, E(),     k, j, i) = F_E;
-          }
+            Fy_rho[i] = F_rho;
+            Fy_mx[i]  = F_mx;
+            Fy_my[i]  = F_my;
+            Fy_mz[i]  = F_mz;
+            Fy_E[i]   = F_E;
+          });
         });
   }
 
@@ -271,13 +302,16 @@ Real EstimateTimestepBlock(MeshBlockData<Real> *rc) {
       KOKKOS_LAMBDA(const int k, const int j, const int i, Real &lmin_dt) {
         if (!(pack.Contains(0, rho()) && pack.Contains(0, mom()) && pack.Contains(0, E())))
           return;
-        const Real rho_v = pack(0, rho(), k, j, i);
-        const Real mx   = pack(0, mom(0), k, j, i);
-        const Real my   = pack(0, mom(1), k, j, i);
-        const Real mz   = pack(0, mom(2), k, j, i);
-        const Real E_v  = pack(0, E(), k, j, i);
+
+        const Real rho_v = pack(0, rho(),   k, j, i);
+        const Real mx    = pack(0, mom(0), k, j, i);
+        const Real my    = pack(0, mom(1), k, j, i);
+        const Real mz    = pack(0, mom(2), k, j, i);
+        const Real E_v   = pack(0, E(),     k, j, i);
+
         Real u, v, w, p, a;
         cons_to_prim(gamma, rho_v, mx, my, mz, E_v, &u, &v, &w, &p, &a);
+
         Real inv_dt = 0.0;
         inv_dt = std::max(inv_dt, (std::abs(u) + a) / coords.Dxc<X1DIR>(k, j, i));
         if (pmb->pmy_mesh->ndim >= 2)

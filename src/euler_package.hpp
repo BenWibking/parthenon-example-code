@@ -43,6 +43,10 @@ std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput
 
 parthenon::TaskStatus ComputeFluxes(std::shared_ptr<parthenon::MeshBlockData<Real>> &rc);
 
+// MeshData variant with explicit block index in loops
+parthenon::TaskStatus ComputeFluxes(parthenon::MeshData<Real> *md);
+
+// MeshBlock variant for dt estimation (per-block)
 parthenon::Real EstimateTimestepBlock(parthenon::MeshBlockData<Real> *rc);
 
 } // namespace euler_sparse_example

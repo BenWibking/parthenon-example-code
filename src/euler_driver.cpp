@@ -31,14 +31,17 @@ TaskCollection EulerDriver::MakeTaskCollection(BlockList_t &blocks, const int st
     tl.AddTask(none, TF(parthenon::StartReceiveBoundBufs<any>), mc0);
   }
 
-  // Per-block flux computation
-  auto &region_flux = tc.AddRegion(blocks.size());
-  for (int i = 0; i < blocks.size(); i++) {
-    auto &pmb = blocks[i];
+  // Flux computation on MeshData partitions (explicit b index)
+  auto &region_flux = tc.AddRegion(num_partitions);
+  for (int i = 0; i < num_partitions; i++) {
     auto &tl = region_flux[i];
-    auto &base = pmb->meshblock_data.Add("base", pmb);
-    auto &sc0 = pmb->meshblock_data.Add(stage_name[stage - 1], base);
-    tl.AddTask(none, TF(euler_sparse_example::ComputeFluxes), sc0);
+    auto &mbase = pmesh->mesh_data.Add("base", partitions[i]);
+    auto &mc0 = pmesh->mesh_data.Add(stage_name[stage - 1], mbase);
+    tl.AddTask(
+        none,
+        TF(static_cast<parthenon::TaskStatus (*)(parthenon::MeshData<Real> *)>(
+            euler_sparse_example::ComputeFluxes)),
+        mc0.get());
   }
 
   // MeshData-partition tasks: divergence, update, exchange
@@ -61,8 +64,8 @@ TaskCollection EulerDriver::MakeTaskCollection(BlockList_t &blocks, const int st
     parthenon::AddBoundaryExchangeTasks(update, tl, mc1, pmesh->multilevel);
   }
 
-  // Tail: BCs and dt
-  auto &region_tail = tc.AddRegion(blocks.size());
+  // Tail: BCs and dt on MeshBlockData (per-block)
+  TaskRegion &region_tail = tc.AddRegion(blocks.size());
   for (int i = 0; i < blocks.size(); i++) {
     auto &pmb = blocks[i];
     auto &tl = region_tail[i];
@@ -76,4 +79,3 @@ TaskCollection EulerDriver::MakeTaskCollection(BlockList_t &blocks, const int st
 }
 
 } // namespace euler_sparse_example
-
