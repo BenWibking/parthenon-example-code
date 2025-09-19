@@ -240,6 +240,14 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 
 With these pieces, this example provides a compact, consistent template for sparse hyperbolic solvers that benefit from Parthenon’s tasking, typed SparsePacks, and coalesced communication.
 
+## TaskRegion Sync: Rules of Thumb
+
+- Regions run sequentially: Parthenon executes TaskRegions in order; Region N completes before Region N+1 starts.
+- Not an implicit device fence: finishing a TaskRegion does not call `Kokkos::fence()`. Fence explicitly before host access or MPI on device-computed data.
+- Not an implicit MPI barrier: there is no automatic MPI barrier between regions. Use `global_sync` tasks (and MPI as needed) for cross-rank coordination.
+- Qualifiers wire dependencies, not fences: `local_sync`/`global_sync`/`once_per_region` create cross-list/rank dependencies within a Region. If a task requires device-host sync, call `Kokkos::fence()` inside that task.
+- Practical pattern: add a small sync task at the end of a Region to fence and/or coordinate MPI reductions, and depend subsequent Regions on it.
+
 ## What parthenon::Update::FluxDivergence Does
 
 `parthenon::Update::FluxDivergence` computes the finite-volume flux divergence and writes it into a `dudt` container for all cell-centered variables that have flux arrays (`Metadata::WithFluxes`). Concretely, per cell and per component it evaluates
