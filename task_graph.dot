@@ -1,0 +1,62 @@
+digraph EulerSparseTasks {
+  rankdir=LR;
+  node [shape=box, fontsize=10];
+
+  // Start region: early receives (per partition)
+  subgraph cluster_start {
+    label = "Start Region (per partition)";
+    color = gray70;
+    fontcolor = gray30;
+
+    start_recv_flux [label="StartReceiveFluxCorrections()\n(post AMR reflux receives)"]; 
+    start_recv_bound [label="StartReceiveBoundBufs<any>()\n(init/post boundary receives)"]; 
+  }
+
+  // Flux region: compute fluxes (per partition)
+  subgraph cluster_flux {
+    label = "Flux Region (per partition)";
+    color = gray70;
+    fontcolor = gray30;
+
+    compute_fluxes [label="ComputeFluxes(md)"];
+  }
+
+  // Update region: divergence, averaging, update, exchange (per partition)
+  subgraph cluster_update {
+    label = "Update Region (per partition)";
+    color = gray70;
+    fontcolor = gray30;
+
+    set_flx [label="AddFluxCorrectionTasks(md)"]; 
+    flux_div [label="Update::FluxDivergence(md → dUdt)"]; 
+    avg_data [label="Update::AverageIndependentData(md, base, beta)"]; 
+    update [label="Update::UpdateIndependentData(md, dUdt, beta*dt → md_next)"]; 
+    bndry_exch [label="AddBoundaryExchangeTasks(md_next)"]; 
+  }
+
+  // Tail region: BCs and optional dt estimate (per block)
+  subgraph cluster_tail {
+    label = "Tail Region (per block)";
+    color = gray70;
+    fontcolor = gray30;
+
+    apply_bc [label="ApplyBoundaryConditions(block_data)"]; 
+    est_dt [label="Update::EstimateTimestep(block_data)\n(only on final RK stage)"]; 
+  }
+
+  // Inter-region ordering (TaskRegions execute sequentially)
+  start_recv_flux -> compute_fluxes;
+  start_recv_bound -> compute_fluxes;
+
+  // Intra-region dependencies in Update region
+  set_flx -> flux_div;
+  flux_div -> avg_data;
+  avg_data -> update;
+  update -> bndry_exch;
+
+  // Region-to-region flow
+  compute_fluxes -> set_flx;
+  bndry_exch -> apply_bc;
+  apply_bc -> est_dt [style=dashed, label="final stage only", fontsize=9];
+}
+
