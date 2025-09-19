@@ -235,3 +235,25 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 - Task ordering: start receives before compute to maximize overlap; operate on `MeshData` partitions for better communication/computation overlap.
 
 With these pieces, this example provides a compact, consistent template for sparse hyperbolic solvers that benefit from Parthenon’s tasking, typed SparsePacks, and coalesced communication.
+
+## What parthenon::Update::FluxDivergence Does
+
+`parthenon::Update::FluxDivergence` computes the finite-volume flux divergence and writes it into a `dudt` container for all cell-centered variables that have flux arrays (`Metadata::WithFluxes`). Concretely, per cell and per component it evaluates
+
+```
+dudt = -(1/CellVolume) * [
+  A_x F_x(i+1) - A_x F_x(i)
+  + (if ndim >= 2) A_y F_y(j+1) - A_y F_y(j)
+  + (if ndim == 3) A_z F_z(k+1) - A_z F_z(k)
+]
+```
+
+Key points:
+- Operates on interior zones only; respects variable allocation checks.
+- Uses mesh geometry for face areas and cell volumes.
+- Works on both `MeshBlockData<Real>` and `MeshData<Real>` packs.
+- Returns `TaskStatus::complete` and is typically followed by update steps (e.g., `UpdateIndependentData` or low-storage integrator updates).
+
+Reference implementation in the Parthenon submodule:
+- Header with helper routine: `extern/parthenon/src/interface/update.hpp`
+- Definitions for `MeshBlockData`/`MeshData` specializations: `extern/parthenon/src/interface/update.cpp`
