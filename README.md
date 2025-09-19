@@ -15,41 +15,57 @@ This guide explains how this repository implements a minimal Parthenon-based hyp
 
 ## Overview of Components
 
-- Package: declares conserved variables as a sparse pool `U` and exposes runtime params and hooks. See `src/euler_package.cpp:Initialize`.
+- Package: declares conserved variables using one SparsePool per state variable: `rho`, `mom`, and `E`. The package also exposes runtime params and hooks. See `src/euler_package.cpp:Initialize`.
 - Problem generator: allocates sparse IDs and initializes state via a typed SparsePack. See `src/parthenon_app_inputs.cpp:ProblemGenerator`.
 - Fluxes: computes Rusanov fluxes in X1 and X2 using typed `MakePackDescriptor` with `WithFluxes`. See `src/euler_package.cpp:ComputeFluxes`.
 - Driver: orchestrates receives, flux compute, divergence, update, and boundary exchanges across `MeshData` partitions. See `src/euler_driver.cpp:MakeTaskCollection`.
 - Timestep: estimates `dt` from wavespeeds. See `src/euler_package.cpp:EstimateTimestepBlock`.
 
-## Declaring Sparse Conserved Variables (Pool `U`)
+## Declaring Sparse Conserved Variables (one pool per state var)
 
-We model density (`rho`), momentum (`mom[3]`), and total energy (`E`) as sparse components in a single pool `U` with fluxes and ghost fills enabled:
+We model density (`rho`), momentum (`mom[3]`), and total energy (`E`) using separate SparsePools — one per state variable — with fluxes and ghost fills enabled. For a single material, we allocate sparse ID 0 in each pool, yielding variable labels `rho_0`, `mom_0`, and `E_0`:
 
 ```c++
 // src/euler_package.cpp:Initialize
 Metadata m({Metadata::Cell, Metadata::Independent, Metadata::WithFluxes,
             Metadata::FillGhost, Metadata::Sparse});
-SparsePool U("U", m);
-U.Add(0, std::vector<int>{1}, std::vector<std::string>{"rho"});
-U.Add(1, std::vector<int>{3}, Metadata::Vector,
-      std::vector<std::string>{"mom_x", "mom_y", "mom_z"});
-U.Add(2, std::vector<int>{1}, std::vector<std::string>{"E"});
-pkg->AddSparsePool(U);
+
+// Density pool
+{
+  SparsePool rho_pool("rho", m);
+  rho_pool.Add(0, std::vector<int>{1}, std::vector<std::string>{"rho"});
+  pkg->AddSparsePool(rho_pool);
+}
+
+// Momentum (vector<3>) pool
+{
+  SparsePool mom_pool("mom", m);
+  mom_pool.Add(0, std::vector<int>{3}, Metadata::Vector,
+               std::vector<std::string>{"mom_x", "mom_y", "mom_z"});
+  pkg->AddSparsePool(mom_pool);
+}
+
+// Total energy pool
+{
+  SparsePool E_pool("E", m);
+  E_pool.Add(0, std::vector<int>{1}, std::vector<std::string>{"E"});
+  pkg->AddSparsePool(E_pool);
+}
 ```
 
-Typed tags for sparse pool access are defined in `src/euler_package.hpp` under `namespace U`. Important: sparse pool labels in Parthenon use the base name plus sparse ID, so `U_0`, `U_1`, `U_2` correspond to `rho`, `mom`, and `E` respectively. The tags encapsulate this naming.
+Typed tags for SparsePack access are defined in `src/euler_package.hpp` under `namespace U`. Important: sparse variable labels in Parthenon use the base name plus sparse ID, so `rho_0`, `mom_0`, and `E_0` correspond to the density, momentum, and energy variables in this example. The tags encapsulate this naming.
 
 Runtime parameters (gamma, cfl) are read from the input file and stored on the package.
 
 ## Allocating and Initializing State
 
-The problem generator allocates the needed sparse IDs on each MeshBlock and initializes fields using a typed pack:
+The problem generator allocates the needed sparse IDs (ID 0 in each pool) on each MeshBlock and initializes fields using a typed pack:
 
 ```c++
 // src/parthenon_app_inputs.cpp:ProblemGenerator
-pmb->AllocSparseID("U", 0);
-pmb->AllocSparseID("U", 1);
-pmb->AllocSparseID("U", 2);
+pmb->AllocSparseID("rho", 0);
+pmb->AllocSparseID("mom", 0);
+pmb->AllocSparseID("E", 0);
 
 using euler_sparse_example::U::rho;
 using euler_sparse_example::U::mom;
@@ -127,7 +143,7 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 
 ## Input File
 
-`parthinput.euler_sparse` configures the mesh, time integrator, and Euler app parameters. Relevant keys under `[euler]` include `gamma`, `cfl`, `rho0`, `p0`, `drho`, `dp`, and blob geometry for the initial condition. Output selects the sparse pool via `variables = U`.
+`parthinput.euler_sparse` configures the mesh, time integrator, and Euler app parameters. Relevant keys under `[euler]` include `gamma`, `cfl`, `rho0`, `p0`, `drho`, `dp`, and blob geometry for the initial condition. For outputs, select variables explicitly, e.g. `variables = rho, mom, E` (or the specific sparse labels like `rho_0`, `mom_0`, `E_0`).
 
 ## Physics/ICs
 
@@ -150,7 +166,7 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 
 ## Tips and Pitfalls
 
-- Allocation: allocate sparse IDs on the host (`AllocSparseID`) and guard device work with `pack.Contains(...)`.
+- Allocation: allocate sparse IDs on the host (`AllocSparseID`) and guard device work with `pack.Contains(...)`. Use one SparsePool per state variable; add additional sparse IDs per pool if modeling multiple materials.
 - Metadata: include `WithFluxes` for fields updated by flux divergence and `FillGhost` for halo exchange; use `Metadata::Vector` for multi-component momentum.
 - Packs: prefer typed tags (`MakePackDescriptor<...>`) for safety and performance; request `PDOpt::WithFluxes` when you need flux arrays.
 - Task ordering: start receives before compute to maximize overlap; operate on `MeshData` partitions for better communication/computation overlap.
