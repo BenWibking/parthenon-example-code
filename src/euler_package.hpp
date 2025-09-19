@@ -14,27 +14,28 @@ using namespace parthenon::package::prelude;
 
 // Typed variable tags for SparsePack access.
 // IMPORTANT: For sparse pools, Parthenon variable labels are "<base>_<sparse_id>".
-// Our pool base name is "U" with IDs: 0 -> rho (scalar), 1 -> mom (vector<3>),
-// 2 -> E (scalar). The typed names must therefore return "U_0", "U_1", and "U_2".
+// We now maintain separate sparse pools for each state variable: bases are
+// "rho", "mom", and "E". For a single material, we use sparse ID 0, thus
+// variable labels are "rho_0", "mom_0", and "E_0".
 namespace U {
 struct rho : public parthenon::variable_names::base_t<false> {
   template <class... Ts>
   KOKKOS_INLINE_FUNCTION rho(Ts &&...args)
       : parthenon::variable_names::base_t<false>(std::forward<Ts>(args)...) {}
-  static std::string name() { return "U_0"; }
+  static std::string name() { return "rho_0"; }
 };
 // Momentum is a 3-vector under sparse id 1
 struct mom : public parthenon::variable_names::base_t<false, 3> {
   template <class... Ts>
   KOKKOS_INLINE_FUNCTION mom(Ts &&...args)
       : parthenon::variable_names::base_t<false, 3>(std::forward<Ts>(args)...) {}
-  static std::string name() { return "U_1"; }
+  static std::string name() { return "mom_0"; }
 };
 struct E : public parthenon::variable_names::base_t<false> {
   template <class... Ts>
   KOKKOS_INLINE_FUNCTION E(Ts &&...args)
       : parthenon::variable_names::base_t<false>(std::forward<Ts>(args)...) {}
-  static std::string name() { return "U_2"; }
+  static std::string name() { return "E_0"; }
 };
 } // namespace U
 

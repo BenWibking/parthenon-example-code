@@ -35,12 +35,32 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   Metadata m({Metadata::Cell, Metadata::Independent, Metadata::WithFluxes,
               Metadata::FillGhost, Metadata::Sparse});
-  SparsePool U("U", m);
-  U.Add(0, std::vector<int>{1}, std::vector<std::string>{"rho"});
-  U.Add(1, std::vector<int>{3}, Metadata::Vector,
-        std::vector<std::string>{"mom_x", "mom_y", "mom_z"});
-  U.Add(2, std::vector<int>{1}, std::vector<std::string>{"E"});
-  pkg->AddSparsePool(U);
+
+  // Separate sparse pools for each state variable. For a single material,
+  // we allocate sparse ID 0 in each pool, yielding labels: rho_0, mom_0, E_0.
+  // Additional materials would use further sparse IDs per pool (e.g., *_1, *_2, ...).
+
+  // Density pool
+  {
+    SparsePool rho_pool("rho", m);
+    rho_pool.Add(0, std::vector<int>{1}, std::vector<std::string>{"rho"});
+    pkg->AddSparsePool(rho_pool);
+  }
+
+  // Momentum (vector<3>) pool
+  {
+    SparsePool mom_pool("mom", m);
+    mom_pool.Add(0, std::vector<int>{3}, Metadata::Vector,
+                 std::vector<std::string>{"mom_x", "mom_y", "mom_z"});
+    pkg->AddSparsePool(mom_pool);
+  }
+
+  // Total energy pool
+  {
+    SparsePool E_pool("E", m);
+    E_pool.Add(0, std::vector<int>{1}, std::vector<std::string>{"E"});
+    pkg->AddSparsePool(E_pool);
+  }
 
   pkg->EstimateTimestepBlock = EstimateTimestepBlock;
   return pkg;

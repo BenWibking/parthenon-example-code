@@ -36,9 +36,10 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   const Real x0 = pin->GetOrAddReal("euler", "blob_x0", 0.0);
   const Real y0 = pin->GetOrAddReal("euler", "blob_y0", 0.0);
 
-  pmb->AllocSparseID("U", 0);
-  pmb->AllocSparseID("U", 1);
-  pmb->AllocSparseID("U", 2);
+  // Allocate sparse ID 0 in each separate pool (rho, mom, E)
+  pmb->AllocSparseID("rho", 0);
+  pmb->AllocSparseID("mom", 0);
+  pmb->AllocSparseID("E", 0);
 
   // Initialize using typed SparsePack access for clarity and safety
   using euler_sparse_example::U::rho;
