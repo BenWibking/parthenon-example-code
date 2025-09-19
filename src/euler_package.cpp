@@ -67,14 +67,14 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
 static KOKKOS_INLINE_FUNCTION void cons_to_prim(
     const Real gamma, const Real rho, const Real mN, const Real mT1, const Real mT2,
-    const Real E, Real *u, Real *v, Real *w, Real *p, Real *a) {
+    const Real E, Real &u, Real &v, Real &w, Real &p, Real &a) {
   const Real inv_rho = 1.0 / rho;
-  *u = mN * inv_rho;
-  *v = mT1 * inv_rho;
-  *w = mT2 * inv_rho;
-  const Real ke = 0.5 * rho * ((*u) * (*u) + (*v) * (*v) + (*w) * (*w));
-  *p = (gamma - 1.0) * (E - ke);
-  *a = std::sqrt(std::max(Real(0.0), gamma * (*p) * inv_rho));
+  u = mN * inv_rho;
+  v = mT1 * inv_rho;
+  w = mT2 * inv_rho;
+  const Real ke = 0.5 * rho * (u * u + v * v + w * w);
+  p = (gamma - 1.0) * (E - ke);
+  a = std::sqrt(std::max(Real(0.0), gamma * p * inv_rho));
 }
 
 template <int DIR>
@@ -82,7 +82,7 @@ KOKKOS_INLINE_FUNCTION void hll_flux_dir(
     const Real gamma,
     const Real rhoL, const Real mxL, const Real myL, const Real mzL, const Real EL,
     const Real rhoR, const Real mxR, const Real myR, const Real mzR, const Real ER,
-    Real *F_rho, Real *F_mx, Real *F_my, Real *F_mz, Real *F_E) {
+    Real &F_rho, Real &F_mx, Real &F_my, Real &F_mz, Real &F_E) {
   // Map momenta so mN is normal, mT1/mT2 tangential to the face normal
   Real mN_L, mT1_L, mT2_L;
   Real mN_R, mT1_R, mT2_R;
@@ -99,8 +99,8 @@ KOKKOS_INLINE_FUNCTION void hll_flux_dir(
 
   Real uL, vL, wL, pL, aL; // u = normal velocity
   Real uR, vR, wR, pR, aR;
-  cons_to_prim(gamma, rhoL, mN_L, mT1_L, mT2_L, EL, &uL, &vL, &wL, &pL, &aL);
-  cons_to_prim(gamma, rhoR, mN_R, mT1_R, mT2_R, ER, &uR, &vR, &wR, &pR, &aR);
+  cons_to_prim(gamma, rhoL, mN_L, mT1_L, mT2_L, EL, uL, vL, wL, pL, aL);
+  cons_to_prim(gamma, rhoR, mN_R, mT1_R, mT2_R, ER, uR, vR, wR, pR, aR);
 
   const Real smax = std::max(std::abs(uL) + aL, std::abs(uR) + aR);
 
@@ -126,23 +126,23 @@ KOKKOS_INLINE_FUNCTION void hll_flux_dir(
 
   // Map back to x,y,z ordering
   if constexpr (DIR == X1DIR) {
-    *F_rho = F_rho_dir;
-    *F_mx  = F_mN_dir;
-    *F_my  = F_mT1_dir;
-    *F_mz  = F_mT2_dir;
-    *F_E   = F_E_dir;
+    F_rho = F_rho_dir;
+    F_mx  = F_mN_dir;
+    F_my  = F_mT1_dir;
+    F_mz  = F_mT2_dir;
+    F_E   = F_E_dir;
   } else if constexpr (DIR == X2DIR) {
-    *F_rho = F_rho_dir;
-    *F_mx  = F_mT1_dir;
-    *F_my  = F_mN_dir;
-    *F_mz  = F_mT2_dir;
-    *F_E   = F_E_dir;
+    F_rho = F_rho_dir;
+    F_mx  = F_mT1_dir;
+    F_my  = F_mN_dir;
+    F_mz  = F_mT2_dir;
+    F_E   = F_E_dir;
   } else { // X3DIR
-    *F_rho = F_rho_dir;
-    *F_mx  = F_mT1_dir;
-    *F_my  = F_mT2_dir;
-    *F_mz  = F_mN_dir;
-    *F_E   = F_E_dir;
+    F_rho = F_rho_dir;
+    F_mx  = F_mT1_dir;
+    F_my  = F_mT2_dir;
+    F_mz  = F_mN_dir;
+    F_E   = F_E_dir;
   }
 }
 
@@ -208,7 +208,7 @@ parthenon::TaskStatus ComputeFluxes(MeshData<Real> *md) {
           hll_flux_dir<X1DIR>(gamma,
                               rhoL, mxL, myL, mzL, EL,
                               rhoR, mxR, myR, mzR, ER,
-                              &F_rho, &F_mx, &F_my, &F_mz, &F_E);
+                              F_rho, F_mx, F_my, F_mz, F_E);
 
           Fx_rho[i] = F_rho;
           Fx_mx[i]  = F_mx;
@@ -265,7 +265,7 @@ parthenon::TaskStatus ComputeFluxes(MeshData<Real> *md) {
             hll_flux_dir<X2DIR>(gamma,
                                 rhoL, mxL, myL, mzL, EL,
                                 rhoR, mxR, myR, mzR, ER,
-                                &F_rho, &F_mx, &F_my, &F_mz, &F_E);
+                                F_rho, F_mx, F_my, F_mz, F_E);
 
             Fy_rho[i] = F_rho;
             Fy_mx[i]  = F_mx;
@@ -310,7 +310,7 @@ Real EstimateTimestepBlock(MeshBlockData<Real> *rc) {
         const Real E_v   = pack(0, E(),     k, j, i);
 
         Real u, v, w, p, a;
-        cons_to_prim(gamma, rho_v, mx, my, mz, E_v, &u, &v, &w, &p, &a);
+        cons_to_prim(gamma, rho_v, mx, my, mz, E_v, u, v, w, p, a);
 
         Real inv_dt = 0.0;
         inv_dt = std::max(inv_dt, (std::abs(u) + a) / coords.Dxc<X1DIR>(k, j, i));
