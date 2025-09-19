@@ -10,8 +10,6 @@
 
 namespace euler_sparse_example {
 
-using namespace parthenon::package::prelude;
-
 // Typed variable tags for SparsePack access.
 // IMPORTANT: For sparse pools, Parthenon variable labels are "<base>_<sparse_id>".
 // We now maintain separate sparse pools for each state variable: bases are
@@ -41,13 +39,15 @@ struct E : public parthenon::variable_names::base_t<false> {
 
 std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin);
 
-parthenon::TaskStatus ComputeFluxes(std::shared_ptr<parthenon::MeshBlockData<Real>> &rc);
+parthenon::TaskStatus ComputeFluxes(
+    std::shared_ptr<parthenon::MeshBlockData<parthenon::Real>> &rc);
 
 // MeshData variant with explicit block index in loops
-parthenon::TaskStatus ComputeFluxes(parthenon::MeshData<Real> *md);
+parthenon::TaskStatus ComputeFluxes(parthenon::MeshData<parthenon::Real> *md);
 
 // MeshBlock variant for dt estimation (per-block)
-parthenon::Real EstimateTimestepBlock(parthenon::MeshBlockData<Real> *rc);
+parthenon::Real EstimateTimestepBlock(
+    parthenon::MeshBlockData<parthenon::Real> *rc);
 
 } // namespace euler_sparse_example
 

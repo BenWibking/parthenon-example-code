@@ -6,14 +6,13 @@
 #include <memory>
 
 namespace euler_sparse_example {
-using namespace parthenon::driver::prelude;
-
-class EulerDriver : public MultiStageDriver {
+class EulerDriver : public parthenon::driver::prelude::MultiStageDriver {
  public:
   EulerDriver(parthenon::ParameterInput *pin, parthenon::ApplicationInput *app_in,
               parthenon::Mesh *pm)
-      : MultiStageDriver(pin, app_in, pm) {}
-  TaskCollection MakeTaskCollection(BlockList_t &blocks, const int stage) override;
+      : parthenon::driver::prelude::MultiStageDriver(pin, app_in, pm) {}
+  parthenon::driver::prelude::TaskCollection MakeTaskCollection(
+      parthenon::driver::prelude::BlockList_t &blocks, const int stage) override;
 };
 
 void ProblemGenerator(parthenon::MeshBlock *pmb, parthenon::ParameterInput *pin);
