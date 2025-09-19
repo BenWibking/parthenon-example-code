@@ -1,5 +1,5 @@
 digraph EulerSparseTasks {
-  rankdir=LR;
+  rankdir=TB;
   node [shape=box, fontsize=10];
 
   // Start region: early receives (per partition)
@@ -59,4 +59,3 @@ digraph EulerSparseTasks {
   bndry_exch -> apply_bc;
   apply_bc -> est_dt [style=dashed, label="final stage only", fontsize=9];
 }
-

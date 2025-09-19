@@ -189,6 +189,10 @@ Exact location: `src/euler_driver.cpp:34`.
 
 AMR tagging is not implemented in this example but can be added in the tail region when adaptive meshes are enabled.
 
+Task graph: The figure below illustrates the per-stage task dependencies constructed in `MakeTaskCollection`. Each node is a task and arrows denote dependencies and execution order across `MeshData` partitions. The image was generated from `task_graph.dot`.
+
+![Task graph for a single RK stage](task_graph.png)
+
 ## Timestep Estimation
 
 `src/euler_package.cpp:EstimateTimestepBlock` computes a stable `dt` based on the maximum characteristic speed per direction using the package `gamma` and the mesh metrics. The driver scales this by `cfl` from the input file.
