@@ -234,59 +234,59 @@ With this set, boundary exchanges initiated via `StartReceiveBoundBufs`, `AddBou
 ## Parthenon Objects Used (API Links)
 
 Core runtime
-- ParthenonManager — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parthenon_manager.hpp#L40
-- ParthenonStatus — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parthenon_manager.hpp#L38
-- DriverStatus — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/driver/driver.hpp#L36
-- Real — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L36
+- [ParthenonManager](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parthenon_manager.hpp#L40)
+- [ParthenonStatus](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parthenon_manager.hpp#L38)
+- [DriverStatus](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/driver/driver.hpp#L36)
+- [Real](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L36)
 
 Inputs, mesh, and data
-- ParameterInput — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parameter_input.hpp#L191
-- ApplicationInput — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/application_input.hpp#L37
-- Mesh — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/mesh.hpp#L79
-- MeshBlock — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/meshblock.hpp#L72
-- MeshData<Real> — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/mesh_data.hpp#L193
-- MeshBlockData<Real> — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/meshblock_data.hpp#L56
-- Packages_t — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/packages.hpp#L25
-- IndexRange — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L42
-- IndexDomain::interior — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/domain.hpp#L69
-- X1DIR, X2DIR, X3DIR — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L60
+- [ParameterInput](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/parameter_input.hpp#L191)
+- [ApplicationInput](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/application_input.hpp#L37)
+- [Mesh](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/mesh.hpp#L79)
+- [MeshBlock](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/meshblock.hpp#L72)
+- [MeshData<Real>](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/mesh_data.hpp#L193)
+- [MeshBlockData<Real>](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/meshblock_data.hpp#L56)
+- [Packages_t](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/packages.hpp#L25)
+- [IndexRange](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L42)
+- [IndexDomain::interior](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/domain.hpp#L69)
+- [X1DIR, X2DIR, X3DIR](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp#L60)
 
 Driver and tasking
-- driver::prelude::MultiStageDriver — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/driver/multistage.hpp#L58
-- driver::prelude::TaskCollection — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L488
-- driver::prelude::TaskRegion — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L457
-- driver::prelude::TaskID — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L75
-- driver::prelude::BlockList_t — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/meshblock.hpp#L476
+- [driver::prelude::MultiStageDriver](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/driver/multistage.hpp#L58)
+- [driver::prelude::TaskCollection](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L488)
+- [driver::prelude::TaskRegion](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L457)
+- [driver::prelude::TaskID](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/tasks/tasks.hpp#L75)
+- [driver::prelude::BlockList_t](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/mesh/meshblock.hpp#L476)
 
 Update and communication tasks
-- Update::FluxDivergence — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp
-- Update::AverageIndependentData — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp
-- Update::UpdateIndependentData — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp
-- Update::EstimateTimestep — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp
-- AddFluxCorrectionTasks — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp
-- AddBoundaryExchangeTasks — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp
-- ApplyBoundaryConditions — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/boundary_conditions.hpp
-- StartReceiveFluxCorrections — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp
-- StartReceiveBoundBufs — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp
-- BoundaryType::any — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp
-- TaskStatus — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp
+- [Update::FluxDivergence](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp)
+- [Update::AverageIndependentData](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp)
+- [Update::UpdateIndependentData](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp)
+- [Update::EstimateTimestep](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/update.hpp)
+- [AddFluxCorrectionTasks](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp)
+- [AddBoundaryExchangeTasks](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp)
+- [ApplyBoundaryConditions](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/boundary_conditions.hpp)
+- [StartReceiveFluxCorrections](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp)
+- [StartReceiveBoundBufs](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/bvals/comms/bvals_in_one.hpp)
+- [BoundaryType::any](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp)
+- [TaskStatus](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/basic_types.hpp)
 
 Package system and metadata
-- StateDescriptor — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/state_descriptor.hpp
-- Packages_t — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/packages.hpp
-- SparsePool — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/sparse_pool.hpp
-- Metadata (flags like Cell, Independent, WithFluxes, FillGhost, Sparse, Vector) — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/metadata.hpp
-- PDOpt::WithFluxes — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/pack_descriptor.hpp
+- [StateDescriptor](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/state_descriptor.hpp)
+- [Packages_t](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/packages.hpp)
+- [SparsePool](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/sparse_pool.hpp)
+- [Metadata](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/interface/metadata.hpp) (flags like Cell, Independent, WithFluxes, FillGhost, Sparse, Vector)
+- [PDOpt::WithFluxes](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/pack_descriptor.hpp)
 
 Variable tagging and packs
-- variable_names::base_t<...> — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/pack_utils.hpp
-- MakePackDescriptor — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/make_pack_descriptor.hpp
+- [variable_names::base_t<...>](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/pack_utils.hpp)
+- [MakePackDescriptor](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/pack/make_pack_descriptor.hpp)
 
 Execution and coordinates
-- par_for_outer / par_for_inner — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/kokkos_abstraction.hpp
-- team_mbr_t, DevExecSpace — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/kokkos_types.hpp
-- Coordinates_t — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/coordinates/coordinates.hpp
-- coords.Xc<...>, coords.Dxc<...> — https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/coordinates/uniform_coordinates.hpp
+- [par_for_outer / par_for_inner](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/kokkos_abstraction.hpp)
+- [team_mbr_t, DevExecSpace](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/kokkos_types.hpp)
+- [Coordinates_t](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/coordinates/coordinates.hpp)
+- [coords.Xc<...>, coords.Dxc<...>](https://github.com/parthenon-hpc-lab/parthenon/blob/df0cceb9b5fceb643a5869d231afa44b1613db70/src/coordinates/uniform_coordinates.hpp)
 
 ## Tips and Pitfalls
 
