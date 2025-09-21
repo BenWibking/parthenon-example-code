@@ -46,11 +46,11 @@ parthenon::driver::prelude::TaskCollection EulerDriver::MakeTaskCollection(
     auto &tl = region_flux[i];
     auto &mbase = pmesh->mesh_data.Add("base", partitions[i]);
     auto &mc0 = pmesh->mesh_data.Add(stage_name[stage - 1], mbase);
-    // Compute the hydro flux using a Riemann solver
+    // Reconstruct (PLM+MC) and compute hydro fluxes using a Riemann solver
     tl.AddTask(
         none,
         TF(static_cast<parthenon::TaskStatus (*)(parthenon::MeshData<parthenon::Real> *)>(
-            euler_sparse_example::ComputeFluxes)),
+            euler_sparse_example::ComputeFluxesPLM_MC)),
         mc0.get());
   }
 

@@ -45,6 +45,9 @@ parthenon::TaskStatus ComputeFluxes(
 // MeshData variant with explicit block index in loops
 parthenon::TaskStatus ComputeFluxes(parthenon::MeshData<parthenon::Real> *md);
 
+// MeshData variant computing fluxes using PLM reconstruction with MC limiter
+parthenon::TaskStatus ComputeFluxesPLM_MC(parthenon::MeshData<parthenon::Real> *md);
+
 // MeshBlock variant for dt estimation (per-block)
 parthenon::Real EstimateTimestepBlock(
     parthenon::MeshBlockData<parthenon::Real> *rc);

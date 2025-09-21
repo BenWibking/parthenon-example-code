@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <parthenon/package.hpp>
+#include "globals.hpp"
 
 #include "interface/metadata.hpp"
 #include "interface/sparse_pool.hpp"
@@ -20,6 +21,21 @@ namespace euler_sparse_example {
 
 static inline parthenon::Real max3(parthenon::Real a, parthenon::Real b, parthenon::Real c) {
   return std::max(a, std::max(b, c));
+}
+
+KOKKOS_INLINE_FUNCTION static parthenon::Real minmod3(parthenon::Real a, parthenon::Real b,
+                                                      parthenon::Real c) {
+  const parthenon::Real sa = (a > 0) - (a < 0);
+  const parthenon::Real sb = (b > 0) - (b < 0);
+  const parthenon::Real sc = (c > 0) - (c < 0);
+  if (sa == sb && sb == sc) {
+    const parthenon::Real ab = fabs(a);
+    const parthenon::Real bb = fabs(b);
+    const parthenon::Real cb = fabs(c);
+    const parthenon::Real m = ab < bb ? (ab < cb ? ab : cb) : (bb < cb ? bb : cb);
+    return sa * m;
+  }
+  return parthenon::Real(0.0);
 }
 
 std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput *pin) {
@@ -59,6 +75,10 @@ std::shared_ptr<parthenon::StateDescriptor> Initialize(parthenon::ParameterInput
     E_pool.Add(0, std::vector<int>{1}, std::vector<std::string>{"E"});
     pkg->AddSparsePool(E_pool);
   }
+
+  // Require at least two ghost cells for PLM+MC reconstruction
+  PARTHENON_REQUIRE_THROWS(parthenon::Globals::nghost >= 2,
+                           "euler_sparse requires parthenon/mesh.nghost >= 2");
 
   pkg->EstimateTimestepBlock = EstimateTimestepBlock;
   return pkg;
@@ -263,6 +283,152 @@ parthenon::TaskStatus ComputeFluxes(parthenon::MeshData<parthenon::Real> *md) {
             const parthenon::Real myR  = my_jR[i];
             const parthenon::Real mzR  = mz_jR[i];
             const parthenon::Real ER   = E_jR[i];
+
+            parthenon::Real F_rho, F_mx, F_my, F_mz, F_E;
+            hll_flux_dir<parthenon::X2DIR>(gamma,
+                                rhoL, mxL, myL, mzL, EL,
+                                rhoR, mxR, myR, mzR, ER,
+                                F_rho, F_mx, F_my, F_mz, F_E);
+
+            Fy_rho[i] = F_rho;
+            Fy_mx[i]  = F_mx;
+            Fy_my[i]  = F_my;
+            Fy_mz[i]  = F_mz;
+            Fy_E[i]   = F_E;
+          });
+        });
+  }
+
+  return parthenon::TaskStatus::complete;
+}
+
+// MeshData variant: compute fluxes using PLM reconstruction with MC limiter
+parthenon::TaskStatus ComputeFluxesPLM_MC(parthenon::MeshData<parthenon::Real> *md) {
+  auto pm = md->GetMeshPointer();
+  auto pkg = pm->packages.Get("euler_sparse");
+  const parthenon::Real gamma = pkg->Param<parthenon::Real>("gamma");
+
+  parthenon::IndexRange ib = md->GetBoundsI(parthenon::IndexDomain::interior);
+  parthenon::IndexRange jb = md->GetBoundsJ(parthenon::IndexDomain::interior);
+  parthenon::IndexRange kb = md->GetBoundsK(parthenon::IndexDomain::interior);
+
+  using euler_sparse_example::U::rho;
+  using euler_sparse_example::U::mom;
+  using euler_sparse_example::U::E;
+  auto desc = parthenon::MakePackDescriptor<rho, mom, E>(
+      md, std::vector<parthenon::MetadataFlag>{},
+      std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
+  auto pack = desc.GetPack(md);
+
+  const int nblocks = md->NumBlocks();
+  const int scratch_level = 0;
+  const size_t scratch_size = 0;
+
+  // X1 fluxes across all blocks
+  parthenon::par_for_outer(
+      DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, parthenon::DevExecSpace(), scratch_size,
+      scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e,
+      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+        if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+          return;
+
+        parthenon::Real *rho_bkj = &pack(b, rho(),   k, j, 0);
+        parthenon::Real *mx_bkj  = &pack(b, mom(0), k, j, 0);
+        parthenon::Real *my_bkj  = &pack(b, mom(1), k, j, 0);
+        parthenon::Real *mz_bkj  = &pack(b, mom(2), k, j, 0);
+        parthenon::Real *E_bkj   = &pack(b, E(),     k, j, 0);
+
+        parthenon::Real *Fx_rho = &pack.flux(b, 1, rho(),   k, j, 0);
+        parthenon::Real *Fx_mx  = &pack.flux(b, 1, mom(0),  k, j, 0);
+        parthenon::Real *Fx_my  = &pack.flux(b, 1, mom(1),  k, j, 0);
+        parthenon::Real *Fx_mz  = &pack.flux(b, 1, mom(2),  k, j, 0);
+        parthenon::Real *Fx_E   = &pack.flux(b, 1, E(),     k, j, 0);
+
+        parthenon::par_for_inner(member, ib.s, ib.e + 1, [&](const int i_face) {
+          const int iL = i_face - 1;
+          const int iR = i_face;
+
+          auto mc_slope = [&](parthenon::Real vm1, parthenon::Real v0, parthenon::Real vp1) {
+            const parthenon::Real dl = v0 - vm1;
+            const parthenon::Real dr = vp1 - v0;
+            const parthenon::Real dc = 0.5 * (vp1 - vm1);
+            return minmod3(2.0 * dl, 2.0 * dr, dc);
+          };
+
+          parthenon::Real rhoL = rho_bkj[iL] + 0.5 * mc_slope(rho_bkj[iL - 1], rho_bkj[iL], rho_bkj[iL + 1]);
+          parthenon::Real rhoR = rho_bkj[iR] - 0.5 * mc_slope(rho_bkj[iR - 1], rho_bkj[iR], rho_bkj[iR + 1]);
+
+          parthenon::Real mxL  = mx_bkj[iL]  + 0.5 * mc_slope(mx_bkj[iL - 1],  mx_bkj[iL],  mx_bkj[iL + 1]);
+          parthenon::Real mxR  = mx_bkj[iR]  - 0.5 * mc_slope(mx_bkj[iR - 1],  mx_bkj[iR],  mx_bkj[iR + 1]);
+
+          parthenon::Real myL  = my_bkj[iL]  + 0.5 * mc_slope(my_bkj[iL - 1],  my_bkj[iL],  my_bkj[iL + 1]);
+          parthenon::Real myR  = my_bkj[iR]  - 0.5 * mc_slope(my_bkj[iR - 1],  my_bkj[iR],  my_bkj[iR + 1]);
+
+          parthenon::Real mzL  = mz_bkj[iL]  + 0.5 * mc_slope(mz_bkj[iL - 1],  mz_bkj[iL],  mz_bkj[iL + 1]);
+          parthenon::Real mzR  = mz_bkj[iR]  - 0.5 * mc_slope(mz_bkj[iR - 1],  mz_bkj[iR],  mz_bkj[iR + 1]);
+
+          parthenon::Real EL   = E_bkj[iL]   + 0.5 * mc_slope(E_bkj[iL - 1],   E_bkj[iL],   E_bkj[iL + 1]);
+          parthenon::Real ER   = E_bkj[iR]   - 0.5 * mc_slope(E_bkj[iR - 1],   E_bkj[iR],   E_bkj[iR + 1]);
+
+          parthenon::Real F_rho, F_mx, F_my, F_mz, F_E;
+          hll_flux_dir<parthenon::X1DIR>(gamma,
+                              rhoL, mxL, myL, mzL, EL,
+                              rhoR, mxR, myR, mzR, ER,
+                              F_rho, F_mx, F_my, F_mz, F_E);
+
+          Fx_rho[i_face] = F_rho;
+          Fx_mx[i_face]  = F_mx;
+          Fx_my[i_face]  = F_my;
+          Fx_mz[i_face]  = F_mz;
+          Fx_E[i_face]   = F_E;
+        });
+      });
+
+  // X2 fluxes (if 2D or 3D)
+  if (pm->ndim >= 2) {
+    parthenon::par_for_outer(
+        DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, parthenon::DevExecSpace(), scratch_size,
+        scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e + 1,
+        KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j_face) {
+          if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
+            return;
+
+          const int jL = j_face - 1;
+          const int jR = j_face;
+
+          // We'll access values via pack(b, var, k, j, i) directly
+
+          parthenon::Real *Fy_rho = &pack.flux(b, 2, rho(),   k, j_face, 0);
+          parthenon::Real *Fy_mx  = &pack.flux(b, 2, mom(0),  k, j_face, 0);
+          parthenon::Real *Fy_my  = &pack.flux(b, 2, mom(1),  k, j_face, 0);
+          parthenon::Real *Fy_mz  = &pack.flux(b, 2, mom(2),  k, j_face, 0);
+          parthenon::Real *Fy_E   = &pack.flux(b, 2, E(),     k, j_face, 0);
+
+          parthenon::par_for_inner(member, ib.s, ib.e, [&](const int i) {
+            auto mc_slope_y = [&](auto var_tag, int jcell) {
+              const parthenon::Real vm1 = pack(b, var_tag, k, jcell - 1, i);
+              const parthenon::Real v0  = pack(b, var_tag, k, jcell, i);
+              const parthenon::Real vp1 = pack(b, var_tag, k, jcell + 1, i);
+              const parthenon::Real dl = v0 - vm1;
+              const parthenon::Real dr = vp1 - v0;
+              const parthenon::Real dc = 0.5 * (vp1 - vm1);
+              return minmod3(2.0 * dl, 2.0 * dr, dc);
+            };
+
+            parthenon::Real rhoL = pack(b, rho(),   k, jL, i) + 0.5 * mc_slope_y(rho(), jL);
+            parthenon::Real rhoR = pack(b, rho(),   k, jR, i) - 0.5 * mc_slope_y(rho(), jR);
+
+            parthenon::Real mxL  = pack(b, mom(0), k, jL, i) + 0.5 * mc_slope_y(mom(0), jL);
+            parthenon::Real mxR  = pack(b, mom(0), k, jR, i) - 0.5 * mc_slope_y(mom(0), jR);
+
+            parthenon::Real myL  = pack(b, mom(1), k, jL, i) + 0.5 * mc_slope_y(mom(1), jL);
+            parthenon::Real myR  = pack(b, mom(1), k, jR, i) - 0.5 * mc_slope_y(mom(1), jR);
+
+            parthenon::Real mzL  = pack(b, mom(2), k, jL, i) + 0.5 * mc_slope_y(mom(2), jL);
+            parthenon::Real mzR  = pack(b, mom(2), k, jR, i) - 0.5 * mc_slope_y(mom(2), jR);
+
+            parthenon::Real EL   = pack(b, E(),     k, jL, i) + 0.5 * mc_slope_y(E(), jL);
+            parthenon::Real ER   = pack(b, E(),     k, jR, i) - 0.5 * mc_slope_y(E(), jR);
 
             parthenon::Real F_rho, F_mx, F_my, F_mz, F_E;
             hll_flux_dir<parthenon::X2DIR>(gamma,
