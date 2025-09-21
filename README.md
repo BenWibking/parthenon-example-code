@@ -10,6 +10,7 @@ This guide explains how this repository implements a minimal Parthenon-based hyp
   - `cmake -S . -B build [-DPARTHENON_ENABLE_MPI=ON -DPARTHENON_ENABLE_OPENMP=ON ...]`
   - `cmake --build build -j`
 - Pass Parthenon options at configure time (MPI/OpenMP/HDF5/Kokkos backend) as needed.
+- Requirement: this example uses PLM reconstruction and requires at least two ghost zones. Ensure `parthenon/mesh.nghost >= 2` (the Parthenon default is 2). You can set it in the input file under `[parthenon/mesh]` if needed.
 - Run from the build tree:
   - `build/src/euler_sparse-example -i parthinput.euler_sparse`
 
@@ -17,7 +18,7 @@ This guide explains how this repository implements a minimal Parthenon-based hyp
 
 - Package: declares conserved variables using one SparsePool per state variable: `rho`, `mom`, and `E`. The package also exposes runtime params and hooks. See `src/euler_package.cpp:Initialize`.
 - Problem generator: allocates sparse IDs and initializes state via a typed SparsePack. See `src/parthenon_app_inputs.cpp:ProblemGenerator`.
-- Fluxes: computes Rusanov fluxes in X1 and X2 using typed `MakePackDescriptor` with `WithFluxes`. See `src/euler_package.cpp:ComputeFluxes`.
+- Fluxes: reconstructs PLM (MC limiter) interface states and computes Rusanov (HLL) fluxes in X1 and X2 using typed `MakePackDescriptor` with `WithFluxes`. The driver invokes `ComputeFluxesPLM_MC`. See `src/euler_package.cpp:ComputeFluxesPLM_MC`.
 - Driver: orchestrates receives, flux compute, divergence, update, and boundary exchanges across `MeshData` partitions. See `src/euler_driver.cpp:MakeTaskCollection`.
 - Timestep: estimates `dt` from wavespeeds. See `src/euler_package.cpp:EstimateTimestepBlock`.
 
@@ -88,10 +89,10 @@ pmb->par_for(PARTHENON_AUTO_LABEL, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
 
 ## Flux Computation with Typed SparsePack
 
-Fluxes are computed over all MeshBlocks at once using a typed `MakePackDescriptor<rho, mom, E>(..., PDOpt::WithFluxes)`, then iterating with a block-aware outer loop and an inner i-loop. A Rusanov (HLL) solver is used in X1 and, when 2D+, in X2.
+Fluxes are computed over all MeshBlocks at once using a typed `MakePackDescriptor<rho, mom, E>(..., PDOpt::WithFluxes)`, then iterating with a block-aware outer loop and an inner i-loop. Piecewise linear (PLM) reconstruction with a monotonized central (MC) slope limiter forms left/right states; a Rusanov (HLL) solver is used in X1 and, when 2D+, in X2.
 
 ```c++
-// src/euler_package.cpp:ComputeFluxes (excerpt)
+// src/euler_package.cpp:ComputeFluxesPLM_MC (excerpt)
 auto desc = parthenon::MakePackDescriptor<rho, mom, E>(
     md, std::vector<parthenon::MetadataFlag>{},
     std::set<parthenon::PDOpt>{parthenon::PDOpt::WithFluxes});
@@ -120,10 +121,11 @@ parthenon::par_for_outer(
       Real *Fx_mz  = &pack.flux(b, 1, mom(2),  k, j, 0);
       Real *Fx_E   = &pack.flux(b, 1, E(),     k, j, 0);
 
-      parthenon::par_for_inner(member, ib.s, ib.e + 1, [&](const int i) {
-        const int iL = i - 1, iR = i;
-        // compute HLL flux using left/right states from rho_bkj[iL/R], ...
-        // write to Fx_*[i]
+      parthenon::par_for_inner(member, ib.s, ib.e + 1, [&](const int i_face) {
+        const int iL = i_face - 1, iR = i_face;
+        // form MC-limited PLM slopes in x for {rho,mom,E} at cell centers
+        // reconstruct left/right interface states at i_face from (iL,iR)
+        // compute HLL flux using reconstructed states and write Fx_*[i_face]
       });
     });
 
@@ -132,12 +134,12 @@ if (pm->ndim >= 2) {
   parthenon::par_for_outer(
       DEFAULT_OUTER_LOOP_PATTERN, PARTHENON_AUTO_LABEL, DevExecSpace(), scratch_size,
       scratch_level, 0, nblocks - 1, kb.s, kb.e, jb.s, jb.e + 1,
-      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j) {
+      KOKKOS_LAMBDA(parthenon::team_mbr_t member, const int b, const int k, const int j_face) {
         if (!(pack.Contains(b, rho()) && pack.Contains(b, mom()) && pack.Contains(b, E())))
           return;
 
-        const int jL = j - 1, jR = j;
-        // take jL/jR i-slices, compute HLL flux, and write to pack.flux(b, 2, ...)
+        const int jL = j_face - 1, jR = j_face;
+        // form MC-limited PLM slopes in y and reconstruct at j_face
         parthenon::par_for_inner(member, ib.s, ib.e, [&](const int i) {
           // compute and store Fy_*[i]
         });
@@ -145,9 +147,10 @@ if (pm->ndim >= 2) {
 }
 ```
 
-Key changes in the new loop structure:
+Key features in the flux kernel:
 - MeshData-based pack and block-aware Contains checks (`pack.Contains(b, ...)`).
 - `par_for_outer` over `(b, k, j)` for X1 and `(b, k, j_face)` for X2.
+- PLM reconstruction with MC limiter to form interface states before the HLL solve.
 - Use pointer slices to contiguous i-lines and `par_for_inner` for face loops.
 
 Helper conversions (conserved → primitive and sound speed) remain alongside the flux routine.
@@ -167,15 +170,16 @@ for (int i = 0; i < num_partitions; i++) {
   auto &tl = region_flux[i];
   auto &mbase = pmesh->mesh_data.Add("base", partitions[i]);
   auto &mc0 = pmesh->mesh_data.Add(stage_name[stage - 1], mbase);
+  // Reconstruct (PLM+MC) and compute hydro fluxes using a Riemann solver
   tl.AddTask(
       none,
       TF(static_cast<parthenon::TaskStatus (*)(parthenon::MeshData<Real> *)>(
-          euler_sparse_example::ComputeFluxes)),
+          euler_sparse_example::ComputeFluxesPLM_MC)),
       mc0.get());
 }
 ```
 
-Exact location: `src/euler_driver.cpp:34`.
+Exact call site: `src/euler_driver.cpp:50` (subject to drift with edits).
 
 1) Start receives early on `MeshData` partitions
    - `StartReceiveFluxCorrections`, `StartReceiveBoundBufs<any>`
@@ -196,6 +200,8 @@ Task graph: The figure below illustrates the per-stage task dependencies constru
 ## Timestep Estimation
 
 `src/euler_package.cpp:EstimateTimestepBlock` computes a stable `dt` based on the maximum characteristic speed per direction using the package `gamma` and the mesh metrics. The driver scales this by `cfl` from the input file.
+
+Note: PLM+MC reconstruction requires at least two ghost zones; the package enforces `parthenon/mesh.nghost >= 2` at runtime.
 
 ## Coalesced Buffer Communication
 
