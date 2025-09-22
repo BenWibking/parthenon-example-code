@@ -1,38 +1,19 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/`: C++17 sources for the Euler sparse example (`main.cpp`, `euler_*`, `parthenon_app_inputs.cpp`, `CMakeLists.txt`).
-- `extern/parthenon/`: Git submodule providing the Parthenon framework (library + infrastructure).
-- `parthinput.euler_sparse`: Example runtime input file; pass via `-i` when running.
-- Preferred integration: include this repo as a subdirectory of a CMake superproject alongside `extern/parthenon` and `src/`.
+The C++17 example lives in `src/` with `main.cpp`, `euler_*.*`, `parthenon_app_inputs.cpp`, and the local `CMakeLists.txt`. The Parthenon framework is tracked as the `extern/parthenon/` submodule; do not edit its sources directly. Runtime inputs such as `parthinput.euler_sparse` sit at the repo root. Typical superproject layouts add this repository and the `extern/parthenon` tree side by side so the top-level CMake can wire targets together.
 
 ## Build, Test, and Development Commands
-- Initialize submodules:
-  - `git submodule update --init --recursive`
-- Quick start (build Parthenon library locally):
-  - `cmake -S extern/parthenon -B build`
-  - `cmake --build build -j`
-- Build this app in a superproject: add `src/CMakeLists.txt` and link `Parthenon::parthenon` to produce `euler_sparse-example`.
-- Run (from your binary directory):
-  - `./euler_sparse-example -i /path/to/parthinput.euler_sparse`
-- Common CMake tips: set Parthenon options at configure time (e.g., `-DPARTHENON_ENABLE_MPI=ON`, `-DPARTHENON_ENABLE_OPENMP=ON`, HDF5/Kokkos backends as needed). Document flags in PRs.
+Initialize dependencies via `git submodule update --init --recursive`. Build the Parthenon library: `cmake -S extern/parthenon -B build && cmake --build build -j`. Inside a superproject, add `src/CMakeLists.txt` and link `Parthenon::parthenon` to produce `euler_sparse-example`. Run local diagnostics from your binary directory with `./euler_sparse-example -i /path/to/parthinput.euler_sparse`. Tweak Parthenon flags at configure time (e.g., `-DPARTHENON_ENABLE_MPI=ON`, `-DPARTHENON_ENABLE_OPENMP=ON`) and record the exact options in reviews.
 
 ## Coding Style & Naming Conventions
-- Language: C++17. Headers `*.hpp`, sources `*.cpp`. Indent with 2 or 4 spaces; no tabs.
-- Filenames: `snake_case` (e.g., `euler_package.cpp`). Types/classes: `PascalCase` (e.g., `EulerDriver`). Functions/vars: `lower_snake_case`.
-- Namespace: `euler_sparse_example`.
-- Includes: use Parthenon-style includes (e.g., `parthenon/package.hpp`). Prefer `auto` only when the type is obvious; avoid one-letter names. Keep changes minimal and focused.
+Use C++17, 2–4 space indentation, and no tabs. Name files in `snake_case`, classes in `PascalCase`, and functions/variables in `lower_snake_case`. Keep everything inside the `euler_sparse_example` namespace. Prefer explicit types unless `auto` clarifies readability. Follow Parthenon include style (`parthenon/package.hpp`) and add concise comments only where logic is non-obvious.
 
 ## Testing Guidelines
-- No in-repo unit tests. Validate by running with `parthinput.euler_sparse` and inspecting diagnostics/output.
-- If adding tests, mirror Parthenon’s GTest pattern in a `tests/` dir and wire via CMake; then run with `ctest -V` from the build tree.
+There are no baked-in unit tests. Validate changes by running the solver with `parthinput.euler_sparse` and inspecting output fields and logs. When adding automated coverage, mirror Parthenon’s GTest setup in `tests/`, register suites in CMake, and execute with `ctest -V` from the build tree.
 
 ## Commit & Pull Request Guidelines
-- Commits: concise, imperative mood, scoped changes (e.g., `driver: fix dt estimate for 2D`). Reference issues when applicable.
-- PRs: include a clear description, rationale, logs or output snippets, linked issues, and exact build/run steps. Note any Parthenon/compile flags used (MPI/OpenMP/HDF5/Kokkos).
+Write commits in imperative mood and scope them narrowly (example: `driver: fix dt estimate for 2D`). Reference issues when applicable. Pull requests should describe motivation, summarize changes, link relevant issues, and include build/run steps plus key output snippets or screenshots. Call out any required Parthenon options, MPI/OpenMP/HDF5/Kokkos backends, or compiler specifics.
 
 ## Security & Configuration Tips
-- Keep the Parthenon submodule pinned; update only after compatibility is verified.
-- Avoid committing generated binaries, large outputs, or local build artifacts.
-- Capture configuration in your PR (compiler, CMake flags, backend selections) for reproducibility.
-
+Keep the Parthenon submodule pinned and update only after validating compatibility. Never commit generated binaries, large output dumps, or local build artifacts. Surface configuration and environment details in PRs so others can reproduce results quickly.
